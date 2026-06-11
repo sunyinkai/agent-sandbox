@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from regex_parser import parse_with_regex
+from llm_parser import parse_with_llm
 
 
 def load_jsonl(path: Path):
@@ -33,7 +33,7 @@ def evaluate(path: Path):
 
     for item in load_jsonl(path):
         total += 1
-        parsed = parse_with_regex(item["log"])
+        parsed = parse_with_llm(item["log"])
         expected = item.get("expected", {})
 
         if parsed is None:
