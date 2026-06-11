@@ -1,4 +1,5 @@
 import json
+import argparse
 from pathlib import Path
 
 from llm_parser import parse_with_llm
@@ -96,4 +97,8 @@ def evaluate(path: Path):
 
 
 if __name__ == "__main__":
-    evaluate(Path("samples/dirty_logs.jsonl"))
+    parser = argparse.ArgumentParser(description="Evaluate parser accuracy on a JSONL log dataset.")
+    parser.add_argument("jsonl_path", type=Path, help="Path to the JSONL dataset to evaluate.")
+    args = parser.parse_args()
+
+    evaluate(args.jsonl_path)

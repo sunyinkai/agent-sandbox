@@ -5,6 +5,22 @@ from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from schemas import ParsedError
 from typing import Optional
 
+SYSTEM_PROMPT = """
+You are a Python error log parser.
+
+Extract structured information from messy Python tracebacks, pytest failures, and natural language bug reports.
+
+Rules:
+- Extract the final Python exception type as error_type when possible.
+- raw_message should contain the core exception message, without unnecessary log noise.
+- file_path should point to the most relevant user-code file, not third-party library files when avoidable.
+- line_number should be the most relevant failing line if available.
+- function_name should be the most relevant function or test name if available.
+- If a field is unknown, use null.
+- Do not invent file paths, line numbers, or function names. They could be null
+- severity must be one of: low, medium, high.
+"""
+
 _client: Optional[OpenAI] = None
 
 def get_client() -> Optional[OpenAI]:
@@ -18,7 +34,7 @@ def get_client() -> Optional[OpenAI]:
 
     if not endpoint or not deployment_name:
         print("[-] Error: Missing required environment variables in .env file.")
-        return
+        return None
 
     try:
         # Fetch a dynamic token provider for Azure AI Foundry.
@@ -42,32 +58,24 @@ def parse_with_llm(log: str) -> Optional[ParsedError]:
     if client is None:
         print("[-] Error: Failed to create client")
         return None
-    response = client.responses.parse(
-        model =  os.getenv("AZURE_DEPLOYMENT_NAME"),
-        input=[{
-            "role":"system",
-            "content":"you are a python error parser, you need to extract the required information correctly for customer locating the issue"
-        },{
-            "role":"user",
-            "content":log
-        }],
-        text_format=ParsedError
-    )
+    try:
+        response = client.responses.parse(
+            model =  os.getenv("AZURE_DEPLOYMENT_NAME"),
+            input=[{
+                "role":"system",
+                "content":SYSTEM_PROMPT
+            },{
+                "role":"user",
+                "content":log
+            }],
+            text_format=ParsedError
+        )
 
-    for output in response.output:
-        if output.type != "message":
-            continue
-        for item in output.content:
-            if item.type == "refusal":
-                # If the model refuses to respond, you will get a refusal message
-                print(item.refusal)
-                continue
-
-            if not item.parsed:
-                raise Exception("Could not parse response")
-            else:
-               return item.parsed
+        return response.output_parsed
+    except Exception as e:
+        print("[-] Error: LLM parsing failed:", e)
+        return None
 
 if __name__ == "__main__":
     log="Traceback (most recent call last):\n  File \"scripts/migrate.py\", line 81, in <module>\n    migrate()\n  File \"scripts/migrate.py\", line 44, in migrate\n    version = int(record[\"version\"])\nValueError: invalid literal for int() with base 10: 'v2'"
-    parse_with_llm(log)
+    print(parse_with_llm(log))
