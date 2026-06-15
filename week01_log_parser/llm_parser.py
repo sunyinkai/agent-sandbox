@@ -23,6 +23,7 @@ Rules:
 
 _client: Optional[OpenAI] = None
 
+
 def get_client() -> Optional[OpenAI]:
     global _client
     if _client is not None:
@@ -39,8 +40,7 @@ def get_client() -> Optional[OpenAI]:
     try:
         # Fetch a dynamic token provider for Azure AI Foundry.
         token_provider = get_bearer_token_provider(
-            DefaultAzureCredential(), 
-            "https://ai.azure.com/.default"
+            DefaultAzureCredential(), "https://ai.azure.com/.default"
         )
 
         # Azure AI Foundry exposes an OpenAI-compatible /openai/v1 endpoint.
@@ -50,9 +50,10 @@ def get_client() -> Optional[OpenAI]:
         )
         return _client
     except Exception as e:
-        print("[-] Error: Failed to create client",e)
+        print("[-] Error: Failed to create client", e)
         return None
-    
+
+
 def parse_with_llm(log: str) -> Optional[ParsedError]:
     client = get_client()
     if client is None:
@@ -60,15 +61,12 @@ def parse_with_llm(log: str) -> Optional[ParsedError]:
         return None
     try:
         response = client.responses.parse(
-            model =  os.getenv("AZURE_DEPLOYMENT_NAME"),
-            input=[{
-                "role":"system",
-                "content":SYSTEM_PROMPT
-            },{
-                "role":"user",
-                "content":log
-            }],
-            text_format=ParsedError
+            model=os.getenv("AZURE_DEPLOYMENT_NAME"),
+            input=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": log},
+            ],
+            text_format=ParsedError,
         )
 
         return response.output_parsed
@@ -76,6 +74,7 @@ def parse_with_llm(log: str) -> Optional[ParsedError]:
         print("[-] Error: LLM parsing failed:", e)
         return None
 
+
 if __name__ == "__main__":
-    log="Traceback (most recent call last):\n  File \"scripts/migrate.py\", line 81, in <module>\n    migrate()\n  File \"scripts/migrate.py\", line 44, in migrate\n    version = int(record[\"version\"])\nValueError: invalid literal for int() with base 10: 'v2'"
+    log = 'Traceback (most recent call last):\n  File "scripts/migrate.py", line 81, in <module>\n    migrate()\n  File "scripts/migrate.py", line 44, in migrate\n    version = int(record["version"])\nValueError: invalid literal for int() with base 10: \'v2\''
     print(parse_with_llm(log))

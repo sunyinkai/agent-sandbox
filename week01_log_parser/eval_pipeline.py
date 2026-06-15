@@ -1,8 +1,8 @@
-import json
 import argparse
+import json
 from pathlib import Path
 
-from llm_parser import parse_with_llm
+from pipeline import parsed_error_log
 
 
 def load_jsonl(path: Path):
@@ -18,7 +18,7 @@ def field_match(parsed_value, expected_value):
     return parsed_value == expected_value
 
 
-def evaluate(path: Path):
+def evaluate(file_path: Path):
     total = 0
     parsed_success = 0
 
@@ -32,9 +32,9 @@ def evaluate(path: Path):
 
     failures = []
 
-    for item in load_jsonl(path):
+    for item in load_jsonl(file_path):
         total += 1
-        parsed = parse_with_llm(item["log"])
+        parsed = parsed_error_log(item["log"])
         expected = item.get("expected", {})
 
         if parsed is None:
@@ -89,7 +89,9 @@ def evaluate(path: Path):
     for field, stat in field_stats.items():
         if stat["total"] == 0:
             continue
-        print(f"- {field}: {stat['correct']}/{stat['total']} = {stat['correct'] / stat['total']:.2%}")
+        print(
+            f"- {field}: {stat['correct']}/{stat['total']} = {stat['correct'] / stat['total']:.2%}"
+        )
 
     print("\nFailures:")
     for failure in failures[:20]:
@@ -97,8 +99,15 @@ def evaluate(path: Path):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Evaluate parser accuracy on a JSONL log dataset.")
-    parser.add_argument("jsonl_path", type=Path, help="Path to the JSONL dataset to evaluate.")
+    parser = argparse.ArgumentParser(
+        description="Evaluate parsed_error_log accuracy on a JSONL log dataset."
+    )
+    parser.add_argument(
+        "--file_path",
+        type=Path,
+        required=True,
+        help="Path to the JSONL dataset to evaluate.",
+    )
     args = parser.parse_args()
 
-    evaluate(args.jsonl_path)
+    evaluate(args.file_path)

@@ -2,6 +2,7 @@ import argparse
 import json
 
 from regex_parser import parse_with_regex
+from llm_parser import parse_with_llm
 
 
 def load_jsonl(path: str):
@@ -14,20 +15,30 @@ def load_jsonl(path: str):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True)
+    parser.add_argument("--parser", choices=("llm", "regex"), required=True)
     args = parser.parse_args()
+
+    parse_log = {
+        "llm": parse_with_llm,
+        "regex": parse_with_regex,
+    }[args.parser]
 
     total = 0
     success = 0
 
     for item in load_jsonl(args.input):
         total += 1
-        parsed = parse_with_regex(item["log"])
+        parsed = parse_log(item["log"])
 
         if parsed:
             success += 1
             print(json.dumps(parsed.model_dump(), ensure_ascii=False))
         else:
-            print(json.dumps({"id": item["id"], "error": "parse_failed"}, ensure_ascii=False))
+            print(
+                json.dumps(
+                    {"id": item["id"], "error": "parse_failed"}, ensure_ascii=False
+                )
+            )
 
     print(f"\nSuccess rate: {success}/{total} = {success / total:.2%}")
 
