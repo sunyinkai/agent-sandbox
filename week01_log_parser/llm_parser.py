@@ -1,9 +1,17 @@
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-from schemas import ParsedError
+from azure.identity import (
+    AzureCliCredential,
+    DefaultAzureCredential,
+    get_bearer_token_provider,
+)
 from typing import Optional
+
+try:
+    from .schemas import ParsedError
+except ImportError:
+    from schemas import ParsedError
 
 SYSTEM_PROMPT = """
 You are a Python error log parser.
@@ -32,15 +40,24 @@ def get_client() -> Optional[OpenAI]:
     load_dotenv()
     endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
     deployment_name = os.getenv("AZURE_DEPLOYMENT_NAME")
+    tenant_id = os.getenv("AZURE_TENANT_ID")
 
     if not endpoint or not deployment_name:
         print("[-] Error: Missing required environment variables in .env file.")
         return None
 
     try:
+        if tenant_id:
+            credential = AzureCliCredential(
+                tenant_id=tenant_id,
+                additionally_allowed_tenants=["*"],
+            )
+        else:
+            credential = DefaultAzureCredential(additionally_allowed_tenants=["*"])
+
         # Fetch a dynamic token provider for Azure AI Foundry.
         token_provider = get_bearer_token_provider(
-            DefaultAzureCredential(), "https://ai.azure.com/.default"
+            credential, "https://ai.azure.com/.default"
         )
 
         # Azure AI Foundry exposes an OpenAI-compatible /openai/v1 endpoint.
