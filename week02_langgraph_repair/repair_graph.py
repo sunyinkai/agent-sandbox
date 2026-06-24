@@ -1,15 +1,17 @@
 from langgraph.graph import StateGraph, START, END
 from operator import add
-from typing import Any, TypedDict, Annotated
+from typing import Any, TypedDict, Annotated, Optional
 from pathlib import Path
 import sys
+import json
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from week01_log_parser.llm_parser import parse_with_llm
-from test_runner import PytestError, run_pytest
+from week02_langgraph_repair.patch_generator import create_patch
+from week02_langgraph_repair.test_runner import PytestError, run_pytest
 
 
 class RepairState(TypedDict):
@@ -20,6 +22,7 @@ class RepairState(TypedDict):
     project_dir: Path
     pytest_errors: list[PytestError]
     parsed_errors: list[dict[str, Any]]
+    proposed_patch: Optional[str]
 
 
 def run_test_scripts(state: RepairState) -> dict:
@@ -46,14 +49,21 @@ def analyze_error(state: RepairState) -> dict:
     return {"parsed_errors": parsed_errors}
 
 
+def generate_patch(state: RepairState) -> dict:
+    proposed_patch = create_patch(state["parsed_errors"], state["project_dir"])
+    return {"proposed_patch": proposed_patch}
+
+
 def build_graph():
     builder = StateGraph(RepairState)
     builder.add_node("run_test_scripts", run_test_scripts)
     builder.add_node("analyze_error", analyze_error)
+    builder.add_node("generate_patch", generate_patch)
 
     builder.add_edge(START, "run_test_scripts")
     builder.add_edge("run_test_scripts", "analyze_error")
-    builder.add_edge("analyze_error", END)
+    builder.add_edge("analyze_error", "generate_patch")
+    builder.add_edge("generate_patch", END)
 
     return builder.compile()
 
@@ -69,6 +79,7 @@ if __name__ == "__main__":
             "project_dir": Path(__file__).parent / "buggy_project",
             "pytest_errors": [],
             "parsed_errors": [],
+            "proposed_patch": None,
         }
     )
-    print(result)
+    print(json.dumps(result, default=str))
