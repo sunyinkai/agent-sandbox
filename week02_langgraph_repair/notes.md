@@ -450,3 +450,60 @@ assert get_user_name(None) == "UNKNOWN"
 - patch 字符串可以通过 stdin 传入，不一定要写临时文件。
 - LLM 生成的 patch 要补最后的 `\n`，避免最后一行被解析成不完整行。
 - 真正验证修复：在临时副本里 `git apply` 后跑 `pytest`。
+
+### OpenAI Responses API messages:
+`client.responses.parse(...)` 的 `input` 可以传多条 message：
+```python
+response = client.responses.parse(
+    model=os.getenv("AZURE_DEPLOYMENT_NAME"),
+    input=[
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": error_context},
+        {"role": "assistant", "content": previous_patch_text},
+        {"role": "user", "content": retry_feedback},
+    ],
+)
+```
+
+这不是一条一条分别发送到远端，而是一次 API 请求把整个 `input` 数组一起发过去。  
+远端模型会按数组顺序读取这些 message，把它们当作一段带 role 标记的对话上下文。
+
+可以近似理解成：
+```text
+system: 你必须只输出 git patch
+user: 这是当前 pytest 错误和代码上下文
+assistant: 这是你上一轮生成的 patch
+user: 这个 patch 没通过 git apply --check，错误是 xxx，请重新生成
+```
+
+顺序有影响。越靠后的 user message 通常越像“当前这一步真正要做什么”。  
+所以 retry 时推荐顺序是：
+1. `system`：固定规则，例如只输出 git diff，不要解释。
+2. `user`：当前任务上下文，例如 pytest 错误和相关代码。
+3. `assistant`：上一轮模型生成的 patch。
+4. `user`：上一轮 patch 的失败原因，以及要求重新生成。
+
+为什么上一轮 patch 放在 `assistant`：  
+因为它语义上是模型上一轮的输出，不是用户说的话。把它作为 `assistant` history，模型更容易理解“这是我之前生成的答案”。
+
+失败原因和修正要求放在新的 `user` message：  
+因为这是当前用户/程序给模型的新反馈，例如：
+```python
+retry_feedback = json.dumps(
+    {
+        "previous_patch_failed": True,
+        "git_apply_check_error": previous_error,
+        "instruction": "The previous patch failed git apply --check. Generate a corrected git unified diff. Output only the patch.",
+    },
+    ensure_ascii=False,
+    indent=2,
+)
+```
+
+简单记法：
+- 多条 message 是一次请求整体发送，不是多次请求。
+- 模型按顺序读 message，role 会影响语义。
+- `system` 放全局规则。
+- `user` 放当前任务和反馈。
+- `assistant` 放模型历史输出。
+- patch retry 时，把 `previous_patch_text` 放进 `assistant`，把 `previous_error` 放进新的 `user`。
