@@ -13,6 +13,7 @@ class PytestError:
     message: str
     file_path: str | None
     line_number: int | None
+    failure_details: str
 
     def to_log_string(self) -> str:
         return "\n".join(
@@ -22,6 +23,7 @@ class PytestError:
                 f"Message: {self.message}",
                 f"File path: {self.file_path}",
                 f"Line number: {self.line_number}",
+                f"Failure details:\n{self.failure_details}",
             ]
         )
 
@@ -45,6 +47,7 @@ def parse_pytest_errors(report: dict) -> list[PytestError]:
                 message=message,
                 file_path=crash.get("path"),
                 line_number=crash.get("lineno"),
+                failure_details=str(call.get("longrepr", "")),
             )
         )
 

@@ -4,14 +4,13 @@ from typing import Any, TypedDict, Annotated, Optional
 from pathlib import Path
 import sys
 import json
-import subprocess
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from week01_log_parser.llm_parser import parse_with_llm
-from week02_langgraph_repair.patch_generator import create_patch
+from week02_langgraph_repair.patch_generator import create_patch, run_git_apply
 from week02_langgraph_repair.test_runner import PytestError, run_pytest
 
 
@@ -47,7 +46,10 @@ def analyze_error(state: RepairState) -> dict:
         error_log = error.to_log_string()
         parsed_error = parse_with_llm(error_log)
         if parsed_error:
-            parsed_errors.append(parsed_error.model_dump())
+            error_context = parsed_error.model_dump()
+            error_context["test_name"] = error.test_name
+            error_context["failure_details"] = error.failure_details
+            parsed_errors.append(error_context)
         else:
             print(f"failed to parse error {error}")
     return {"parsed_errors": parsed_errors}
@@ -75,13 +77,7 @@ def apply_patch(state: RepairState) -> dict:
             "history": ["apply_patch: skipped invalid patch\n"],
         }
 
-    result = subprocess.run(
-        ["git", "apply"],
-        input=patch,
-        text=True,
-        capture_output=True,
-        cwd=state["project_dir"],
-    )
+    result = run_git_apply(patch, state["project_dir"])
 
     output = result.stdout + "\n" + result.stderr
     applied = result.returncode == 0

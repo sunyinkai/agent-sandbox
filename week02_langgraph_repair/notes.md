@@ -321,56 +321,85 @@ from week02_langgraph_repair.test_runner import PytestError, run_pytest
 - demo 阶段：`PROJECT_ROOT + sys.path.insert` 比较方便。
 - 正规项目：优先用 `python -m package.module` 和统一的包导入。
 
-### git apply --check:
-`git apply --check` 用来检查一个 patch 能不能干净地应用到当前工作区。
+### git apply、Git 工作树和 patch 路径:
 
-常见用法是传 patch 文件：
-```bash
-git apply --check fix.patch
+`git apply` 读取 standard Git/unified diff，根据路径和上下文找到目标代码，删除 `-` 行并插入 `+` 行。它只修改工作树，不会自动 commit 或加入暂存区。patch 可以来自文件，也可以通过 `subprocess.run(input=patch_text)` 从 stdin 传入。
+
+#### Git 工作树是什么
+工作树（working tree）是实际编辑代码的目录：
+```text
+agent-sandbox/                                  <- 工作树根目录
+├── .git/
+└── week02_langgraph_repair/buggy_project/      <- project_dir
 ```
 
-也可以不传文件，让 `git apply` 从 stdin 读取 patch 内容：
+Git 从当前目录向上识别所属仓库。不要自己搜索 `.git`，直接让 Git 返回工作树根目录：
 ```bash
-printf '%s\n' "$PATCH" | git apply --check
+git rev-parse --show-toplevel
 ```
 
-Python 里可以直接把字符串传给 stdin：
+本项目返回：
+```text
+/home/yinkaisun/agent-sandbox
+```
+
+#### cwd 不一定是 Git 工作树根目录
+即使在 `buggy_project` 启动 Git：
 ```python
-import subprocess
-
-
-def check_patch(patch_text: str, cwd: str) -> tuple[bool, str]:
-    if not patch_text.endswith("\n"):
-        patch_text += "\n"
-
-    result = subprocess.run(
-        ["git", "apply", "--check"],
-        input=patch_text,
-        text=True,
-        capture_output=True,
-        cwd=cwd,
-    )
-    return result.returncode == 0, result.stderr
+subprocess.run(["git", "apply"], cwd=project_dir)
 ```
 
-这里不传 patch 文件名时，`git apply --check` 会从标准输入读取 `patch_text`。
+Git 仍会发现外层仓库：
+```text
+进程 cwd        = week02_langgraph_repair/buggy_project
+工作树根目录     = agent-sandbox
+```
 
-`cwd` 很重要。patch 里的路径是相对于 `cwd` 解析的。
-例如 patch 里是：
+`cwd` 只是进程启动位置，不会把 `buggy_project` 变成独立仓库。在仓库子目录运行 `git apply` 时，不在当前子目录范围内的 patch 路径可能被跳过。
+
+这次 LLM 生成的路径是：
 ```diff
 diff --git a/app/cart.py b/app/cart.py
 --- a/app/cart.py
 +++ b/app/cart.py
 ```
 
-那 `cwd` 应该是包含 `app/` 的目录：
+去掉 `a/`、`b/` 后是 `app/cart.py`。LLM 认为它相对于 `buggy_project`，但 Git 使用外层工作树的路径体系，因此原命令输出：
+```text
+Skipped patch 'app/cart.py'.
+```
+
+Git 仍可能返回退出码 0，所以只检查 `returncode` 会产生 `applied: True` 的假象。
+
+#### --directory 的原理
+先计算项目相对于工作树的位置：
+```python
+relative_project_dir = project_dir.relative_to(repo_root)
+```
+
+得到：
 ```text
 week02_langgraph_repair/buggy_project
 ```
 
-`git apply` 接收的是标准 git/unified diff，不接收 `apply_patch` 工具格式。
+再让 `--directory` 给所有 patch 路径添加该前缀：
+```bash
+--directory=week02_langgraph_repair/buggy_project
+```
 
-正确格式类似：
+```text
+app/cart.py
+-> week02_langgraph_repair/buggy_project/app/cart.py
+```
+
+真正修复路径问题的是 `--directory`。当前代码还把 `cwd` 设为 `repo_root`，让命令基准与仓库相对路径一致；已有正确 `--directory` 时，保留 `cwd=project_dir` 也能工作。如果项目本身就是工作树根目录，则不需要 `--directory`；如果不属于 Git 仓库，则直接在 `project_dir` 执行。
+
+#### git apply --check
+`--check` 检查 patch 格式、目标路径和上下文，但不写文件，也不判断业务逻辑。检查和实际应用应复用同一个 helper，确保二者使用相同的 `--directory` 和 `--recount`；应用后仍要运行 pytest。
+
+### unified diff、hunk 和 --recount:
+
+一个 unified diff hunk：
 ```diff
 diff --git a/app/cart.py b/app/cart.py
 --- a/app/cart.py
@@ -380,76 +409,40 @@ diff --git a/app/cart.py b/app/cart.py
      total = 0
      for item in items:
 -        total += item["price"]
-+        total += float(item["price"])
++        total += int(item["price"])
      return total
 ```
 
-错误格式类似：
-```diff
-*** Begin Patch
-*** Update File: app/cart.py
-@@
--old
-+new
-*** End Patch
-```
-
-这种是某些工具自己的 patch 格式，`git apply` 不认识，通常会报：
+hunk 是修改行和周围上下文组成的代码块。header 格式：
 ```text
-error: No valid patches in input
+@@ -旧文件起始行,旧文件覆盖行数 +新文件起始行,新文件覆盖行数 @@
 ```
 
-unified diff 的 hunk header 行数也必须正确：
-```diff
-@@ -1,5 +1,5 @@
-```
+| 前缀 | 含义 | 计入旧文件 | 计入新文件 |
+|---|---|---:|---:|
+| 空格 | 未修改的上下文行 | 是 | 是 |
+| `-` | 从旧文件删除的行 | 是 | 否 |
+| `+` | 向新文件添加的行 | 否 | 是 |
 
-含义是：
-- 旧文件从第 1 行开始，这个 hunk 覆盖 5 行旧内容。
-- 新文件从第 1 行开始，这个 hunk 覆盖 5 行新内容。
+例子中真正修改的是 1 行；另外 4 行是定位用的上下文。因此旧侧为“4 个上下文 + 1 个删除 = 5”，新侧为“4 个上下文 + 1 个新增 = 5”，header 是 `@@ -1,5 +1,5 @@`。这里的 5 表示 hunk 覆盖范围，不是修改了 5 行。
 
-如果 header 写成 `@@ -1,4 +1,4 @@`，但下面实际有 5 行旧内容和 5 行新内容，`git apply` 可能会报：
+#### --recount 的原理
+LLM 可能把上例误写成 `@@ -1,4 +1,4 @@`。`--recount` 不相信 header 中的行数，而是根据空格、`-`、`+` 重新计算为 5 和 5。它只修复 hunk 行数元数据，不能修复业务逻辑、文件路径或错误上下文。
+
+#### normalize_patch_text 和 --recount 的区别
+| 机制 | 解决的问题 |
+|---|---|
+| `normalize_patch_text()` | 整个 patch 的最后一行缺少 `\n` |
+| `git apply --recount` | hunk header 中的行数与 hunk 正文不一致 |
+
+最终流程：
 ```text
-error: corrupt patch at line ...
+LLM 生成 patch
+    -> normalize_patch_text 补末尾换行
+    -> git apply --recount --check 检查格式、路径和上下文
+    -> git apply --recount 真正写入目标文件
+    -> pytest 检查业务行为
 ```
-
-diff 是按行解析的文本格式，每一行最好都以 `\n` 结束，包括最后一行。
-LLM 返回的 patch 字符串有时最后没有换行，例如最后是：
-```python
-'+    return user.name.upper()'
-```
-
-更稳的是补成：
-```python
-'+    return user.name.upper()\n'
-```
-
-所以在传给 `git apply --check` 前，建议统一做一次规范化：
-```python
-if not patch_text.endswith("\n"):
-    patch_text += "\n"
-```
-
-`git apply --check` 只检查 patch 是否能应用，不检查业务逻辑是否正确。
-例如它能通过下面这种 patch：
-```diff
-+    if user is None:
-+        return None
-```
-
-但如果测试期望的是：
-```python
-assert get_user_name(None) == "UNKNOWN"
-```
-
-那 patch 虽然能 apply，测试还是会失败。
-
-简单记法：
-- `git apply --check`：检查 patch 格式、路径和上下文能不能应用。
-- `git apply --check` 不会跑测试，也不知道修复是否正确。
-- patch 字符串可以通过 stdin 传入，不一定要写临时文件。
-- LLM 生成的 patch 要补最后的 `\n`，避免最后一行被解析成不完整行。
-- 真正验证修复：在临时副本里 `git apply` 后跑 `pytest`。
 
 ### OpenAI Responses API messages:
 `client.responses.parse(...)` 的 `input` 可以传多条 message：

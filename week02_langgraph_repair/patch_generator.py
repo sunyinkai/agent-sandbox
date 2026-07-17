@@ -32,14 +32,41 @@ def normalize_patch_text(patch_text: str) -> str:
     return patch_text
 
 
-def check_patch(patch_text: str, cwd: str) -> tuple[bool, str]:
-    result = subprocess.run(
-        ["git", "apply", "--check"],
+def run_git_apply(
+    patch_text: str, project_dir: Path, check_only: bool = False
+) -> subprocess.CompletedProcess[str]:
+    project_dir = project_dir.resolve()
+    args = ["git", "apply", "--recount"]
+    if check_only:
+        args.append("--check")
+
+    # Find the Git worktree root so patch paths can be prefixed correctly.
+    repo_result = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        text=True,
+        capture_output=True,
+        cwd=project_dir,
+    )
+    apply_cwd = project_dir
+
+    if repo_result.returncode == 0:
+        repo_root = Path(repo_result.stdout.strip()).resolve()
+        relative_project_dir = project_dir.relative_to(repo_root)
+        apply_cwd = repo_root
+        if relative_project_dir != Path("."):
+            args.append(f"--directory={relative_project_dir.as_posix()}")
+
+    return subprocess.run(
+        args,
         input=patch_text,
         text=True,
         capture_output=True,
-        cwd=cwd,
+        cwd=apply_cwd,
     )
+
+
+def check_patch(patch_text: str, project_dir: Path) -> tuple[bool, str]:
+    result = run_git_apply(patch_text, project_dir, check_only=True)
     return result.returncode == 0, result.stderr
 
 
@@ -103,7 +130,7 @@ def create_patch(
             ),
         )
         patch_text = normalize_patch_text(response.output_text)
-        ok, error = check_patch(patch_text, cwd=str(project_dir))
+        ok, error = check_patch(patch_text, project_dir)
 
         if ok:
             print("\nok:True\npatch_text:" + patch_text)
