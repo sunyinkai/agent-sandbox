@@ -1,8 +1,8 @@
-from typing import Optional, TypedDict
+from typing import Optional
 
-from regex_parser import parse_with_regex
-from llm_parser import parse_with_llm
-from schemas import ParsedError
+from .llm_parser import parse_with_llm
+from .regex_parser import parse_with_regex
+from .schemas import ParsedError
 
 
 def parsed_error_log(log: str) -> Optional[ParsedError]:

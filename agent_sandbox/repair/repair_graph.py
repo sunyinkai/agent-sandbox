@@ -2,16 +2,11 @@ from langgraph.graph import StateGraph, START, END
 from operator import add
 from typing import Any, TypedDict, Annotated, Optional
 from pathlib import Path
-import sys
 import json
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from week01_log_parser.llm_parser import parse_with_llm
-from week02_langgraph_repair.patch_generator import create_patch, run_git_apply
-from week02_langgraph_repair.test_runner import PytestError, run_pytest
+from agent_sandbox.parsing.llm_parser import parse_with_llm
+from agent_sandbox.repair.patch_generator import create_patch, run_git_apply
+from agent_sandbox.repair.test_runner import PytestError, run_pytest
 
 
 class RepairState(TypedDict):
@@ -138,7 +133,9 @@ if __name__ == "__main__":
             "max_attempts": 3,
             "passed": False,
             "history": [],
-            "project_dir": Path(__file__).parent / "buggy_project",
+            "project_dir": Path(__file__).resolve().parents[2]
+            / "fixtures"
+            / "buggy_project",
             "pytest_errors": [],
             "parsed_errors": [],
             "proposed_patch": None,

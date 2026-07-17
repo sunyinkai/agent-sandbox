@@ -1,9 +1,10 @@
-from week01_log_parser.openai_helper import get_client
 from typing import Optional, Any
 import json
 from pathlib import Path
 import os
 import subprocess
+
+from agent_sandbox.integrations.openai_client import get_client
 
 
 def get_context(file_path: str) -> Optional[str]:

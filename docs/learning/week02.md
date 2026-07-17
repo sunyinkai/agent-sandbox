@@ -1,3 +1,10 @@
+# Week 02 学习笔记
+
+> 本文记录重构前的学习过程，因此正文中的 `week01_log_parser/` 和
+> `week02_langgraph_repair/` 路径保留为历史上下文。当前对应关系是：
+> `agent_sandbox/parsing/`、`agent_sandbox/repair/` 和
+> `fixtures/buggy_project/`；当前命令见仓库根目录 README。
+
 ### langraph:
 - State：整张图共享的状态。
 - Node：处理步骤，本质是一个函数。

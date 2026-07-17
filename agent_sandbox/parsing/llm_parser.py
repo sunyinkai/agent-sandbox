@@ -1,7 +1,8 @@
 import os
 from typing import Optional
-from week01_log_parser.openai_helper import get_client
-from week01_log_parser.schemas import ParsedError
+
+from agent_sandbox.integrations.openai_client import get_client
+from agent_sandbox.parsing.schemas import ParsedError
 
 SYSTEM_PROMPT = """
 You are a Python error log parser.

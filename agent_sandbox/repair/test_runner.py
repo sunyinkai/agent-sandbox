@@ -85,7 +85,7 @@ def run_pytest(project_dir: Path) -> tuple[bool, str, list[PytestError]]:
 
 
 if __name__ == "__main__":
-    project_dir = Path(__file__).parent / "buggy_project"
+    project_dir = Path(__file__).resolve().parents[2] / "fixtures" / "buggy_project"
 
     passed, output, errors = run_pytest(project_dir)
 

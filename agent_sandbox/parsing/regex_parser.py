@@ -1,7 +1,7 @@
 import re
 from typing import Optional
 
-from schemas import ParsedError
+from .schemas import ParsedError
 
 
 def parse_with_regex(log: str) -> Optional[ParsedError]:

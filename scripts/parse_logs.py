@@ -1,8 +1,8 @@
 import argparse
 import json
 
-from regex_parser import parse_with_regex
-from llm_parser import parse_with_llm
+from agent_sandbox.parsing.llm_parser import parse_with_llm
+from agent_sandbox.parsing.regex_parser import parse_with_regex
 
 
 def load_jsonl(path: str):
