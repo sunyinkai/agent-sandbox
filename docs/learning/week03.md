@@ -111,6 +111,60 @@ container.remove(force=True)
 - `attrs["State"]["OOMKilled"]`：判断容器是否因为 OOM 被终止。
 - `remove(force=True)`：强制删除容器。
 
+### 容器安全限制:
+当前 Docker 执行参数同时限制资源、网络、权限和文件系统：
+```python
+container = client.containers.run(
+    "python:3.12-slim",
+    mem_limit=f"{request.memory_limit_mb}m",
+    memswap_limit=f"{request.memory_limit_mb}m",
+    pids_limit=request.pids_limit,
+    network_disabled=not request.network_enabled,
+    read_only=True,
+    user="65534:65534",
+    cap_drop=["ALL"],
+    security_opt=["no-new-privileges"],
+    tmpfs={"/tmp": "rw,noexec,nosuid,size=64m"},
+)
+```
+
+资源限制：
+- `mem_limit="256m"`：限制容器最多使用 256 MB 内存。Docker SDK 接收整数时按字节解释，因此模型中的 MB 数值需要显式加上 `m`。
+- `memswap_limit="256m"`：内存与 memory+swap 总上限相同，不允许容器额外使用 swap。
+- `pids_limit=64`：限制容器可创建的进程数量，降低无限创建进程的风险。
+- `network_disabled=True`：禁用容器网络。镜像和依赖必须提前准备，运行阶段不能依赖在线安装。
+
+权限限制：
+- `user="65534:65534"`：使用非 root 用户运行容器进程。
+- `cap_drop=["ALL"]`：删除 Linux capabilities，阻止挂载文件系统、修改网络和跟踪其他进程等特权操作。
+- `security_opt=["no-new-privileges"]`：禁止子进程通过 setuid、setgid 等方式获得额外权限。
+
+文件系统限制：
+- `read_only=True`：将容器根文件系统设为只读，不能修改 `/usr`、`/etc`、`/var` 等镜像内容。
+- `/workspace:ro`：项目目录默认只读挂载，避免测试修改宿主机代码。
+- `tmpfs`：在只读容器中为 `/tmp` 提供受限的临时可写空间。
+
+`tmpfs` 是临时内存文件系统：
+```text
+/                  只读
+/workspace         默认只读
+/tmp               可写，最大 64 MB，容器删除后消失
+```
+
+`tmpfs` 参数含义：
+- `rw`：允许读写临时文件。
+- `noexec`：禁止操作系统直接执行 `/tmp` 中的二进制文件。
+- `nosuid`：忽略 setuid/setgid 权限位，避免借此提权。
+- `size=64m`：限制临时目录最多占用 64 MB。
+
+普通 Python 计算、读取项目文件和 pytest 通常不受这些限制。需要额外处理的写入行为包括：
+- 设置 `PYTHONDONTWRITEBYTECODE=1`，避免 Python 创建 `__pycache__` 和 `.pyc`。
+- pytest 使用 `-p no:cacheprovider`，避免在只读工作区创建 `.pytest_cache`。
+- 测试需要临时文件时使用 `/tmp` 或 pytest 的 `tmp_path`。
+- 不能在容器启动后执行 `pip install`；测试依赖需要预先构建到镜像中。
+
+`PYTHONUNBUFFERED=1` 让 stdout 和 stderr 立即输出，便于在超时或异常终止时保留尽可能完整的日志。
+
 ### 容器生命周期管理:
 当前执行路径为：
 ```text
@@ -175,6 +229,24 @@ execution_result.exit_code  # 对象属性
 ```python
 ExecutionResult(**result_data)
 ```
+
+向 `python -c` 传递多行代码时，可以使用 `textwrap.dedent()` 删除代码块各行共同的前导缩进：
+```python
+from textwrap import dedent
+
+oom_code = dedent(
+    """
+    chunks = []
+
+    while True:
+        chunks.append(bytearray(10 * 1024 * 1024))
+    """
+).strip()
+
+commands = ["python", "-c", oom_code]
+```
+
+三引号字符串会保留源文件中的缩进。如果直接传给 `python -c`，顶层语句可能因为多余空格触发 `IndentationError: unexpected indent`。`dedent()` 删除共同缩进，同时保留 `while` 循环体内部的相对缩进；`.strip()` 用于删除代码块首尾空行。
 
 项目使用 Ruff 进行代码格式化、import 排序和 lint。Python 3.10 以上使用 `X | None` 替代 `Optional[X]`，可以减少额外 import，并保持类型标注统一。
 
