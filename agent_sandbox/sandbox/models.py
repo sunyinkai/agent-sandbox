@@ -1,10 +1,11 @@
-from pydantic import BaseModel, Field
-from pathlib import Path
 from enum import Enum
+from pathlib import Path
+
+from pydantic import BaseModel, Field
 
 
 class ExecutionRequest(BaseModel):
-    project_dir: Path = Field(description="project path", min_length=1)
+    project_dir: Path = Field(description="project path")
     commands: list[str] = Field(description="commands list", min_length=1)
 
     # resource limitation
@@ -21,22 +22,27 @@ class ExecutionRequest(BaseModel):
 
 class ErrorCategory(Enum):
     NONE = "none"
+
     TIMEOUT = "timeout"
     OUT_OF_MEMORY = "out_of_memory"
-    RUNTIME_ERROR = "runtime_error"
-    SYNTAX_ERROR = "syntax_error"
-    ASSERTION_FAILURE = "assertion_failure"
     INFRASTRUCTURE_ERROR = "infrastructure_error"
+
+    SYNTAX_ERROR = "syntax_error"
+    RUNTIME_ERROR = "runtime_error"
+    ASSERTION_FAILURE = "assertion_failure"
+
     UNKNOWN = "unknown"
 
 
 class ExecutionResult(BaseModel):
-    exit_code: int
-    error_category: ErrorCategory
-    # compiler output
-    stdout: str
-    stderr: str
     # system output
-    infra_err: str | None
-    duration_ms: int
-    container_id: str | None
+    # 0: process completed successfully; non-zero: process ran but failed;
+    # None: no process exit code exists because execution never started.
+    exit_code: int | None = None
+    error_category: ErrorCategory
+    infra_err: str | None = None
+    duration_seconds: float
+    container_id: str | None = None
+    # compiler/interpreter output
+    stdout: str | None = None
+    stderr: str | None = None

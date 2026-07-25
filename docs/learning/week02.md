@@ -1,6 +1,6 @@
-# Week 02 学习笔记
+# Week 02 项目记录
 
-> 本文记录重构前的学习过程，因此正文中的 `week01_log_parser/` 和
+> 本文保留重构前的实现过程，因此正文中的 `week01_log_parser/` 和
 > `week02_langgraph_repair/` 路径保留为历史上下文。当前对应关系是：
 > `agent_sandbox/parsing/`、`agent_sandbox/repair/` 和
 > `fixtures/buggy_project/`；当前命令见仓库根目录 README。
@@ -97,7 +97,7 @@ error.message
 - 想让字段更明确，访问更舒服。
 - 想用 `frozen=True` 表达“创建后不应该被修改”。
 
-例如今天的 `PytestError` 一开始只是结构化 pytest JSON，可以用 `TypedDict`。  
+例如当前项目中的 `PytestError` 一开始只是结构化 pytest JSON，可以用 `TypedDict`。  
 但后来它需要负责把自己转成 LLM 看的文本：
 ```python
 def to_log_string(self) -> str:
@@ -114,7 +114,7 @@ def to_log_string(self) -> str:
 
 这时 `dataclass` 更自然，因为“错误如何格式化成日志文本”属于 `PytestError` 自己的行为。
 
-简单记法：
+选型原则：
 - 只是描述 dict 形状：用 `TypedDict`。
 - 数据需要行为或方法：用 `dataclass`。
 - 数据来自 JSON，准备继续当 JSON/dict 传来传去：用 `TypedDict`。
@@ -200,7 +200,7 @@ def to_log_string(self) -> str:
     )
 ```
 
-简单记法：
+处理原则：
 - 人看：保留 pytest 原始 `stdout`。
 - 程序看：解析 JSON report。
 - LLM 看：把结构化 error 转成简洁文本。
@@ -322,7 +322,7 @@ from week01_log_parser.llm_parser import parse_with_llm
 from week02_langgraph_repair.test_runner import PytestError, run_pytest
 ```
 
-简单记法：
+运行约定：
 - 如果固定从项目根目录运行，import 从项目根目录开始写。
 - 同目录裸导入如 `from test_runner import ...` 适合小脚本，但跨目录时容易混乱。
 - demo 阶段：`PROJECT_ROOT + sys.path.insert` 比较方便。
@@ -500,7 +500,7 @@ retry_feedback = json.dumps(
 )
 ```
 
-简单记法：
+消息约定：
 - 多条 message 是一次请求整体发送，不是多次请求。
 - 模型按顺序读 message，role 会影响语义。
 - `system` 放全局规则。

@@ -13,13 +13,8 @@ agent_sandbox/
 scripts/                # 可直接运行的 CLI 和评估入口
 examples/               # 示例代码与日志数据
 fixtures/               # 可重复使用的故障项目和测试场景
-docs/learning/          # 按学习阶段保留的笔记和复盘
+docs/learning/          # 按迭代阶段保留的项目记录和复盘
 ```
-
-代码按业务能力组织，周次只用于学习记录。后续 Week 03 不再创建
-`week03_*` 目录，而是在 `agent_sandbox/sandbox/` 中实现执行模型、Docker
-生命周期、超时和资源限制；pytest JSON 解析与修复循环集成继续放在
-`agent_sandbox/repair/`。
 
 ## 常用命令
 
