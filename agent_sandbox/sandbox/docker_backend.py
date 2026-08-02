@@ -1,6 +1,5 @@
 import time
 from pathlib import Path
-from textwrap import dedent
 
 import docker
 from docker.errors import DockerException
@@ -15,6 +14,17 @@ class DockerSandbox:
         container = None
         try:
             client = docker.from_env()
+            volumes = {
+                str(request.project_dir.resolve()): {
+                    "bind": "/workspace",
+                    "mode": "ro" if request.read_only_workspace else "rw",
+                }
+            }
+            if request.report_dir is not None:
+                volumes[str(request.report_dir.resolve())] = {
+                    "bind": "/reports",
+                    "mode": "rw",
+                }
             container = client.containers.run(
                 "agent-sandbox-python:3.12",
                 command=request.commands,
@@ -28,22 +38,14 @@ class DockerSandbox:
                 cap_drop=["ALL"],
                 security_opt=["no-new-privileges"],
                 tmpfs={"/tmp": "rw,noexec,nosuid,size=64m"},
-                volumes={
-                    str(request.project_dir.resolve()): {
-                        "bind": "/workspace",
-                        "mode": "ro" if request.read_only_workspace else "rw",
-                    },
-                    "/tmp/agent-sandbox-reports": {
-                        "bind": "/reports",
-                        "mode": "rw",
-                    },
-                },
+                volumes=volumes,
                 working_dir="/workspace",
                 environment={
                     "PYTHONDONTWRITEBYTECODE": "1",
                     "PYTHONUNBUFFERED": "1",
                 },
             )
+
             container_id = container.attrs["Id"]
 
             try:
@@ -90,12 +92,6 @@ class DockerSandbox:
 
 
 if __name__ == "__main__":
-    code_block = dedent(
-        """
-        import time
-        time.sleep(60)
-    """
-    ).strip()
     req = ExecutionRequest(
         project_dir=(
             Path(__file__).resolve().parents[2] / "fixtures" / "buggy_project"

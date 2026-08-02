@@ -1,8 +1,9 @@
-from langgraph.graph import StateGraph, START, END
-from operator import add
-from typing import Any, TypedDict, Annotated, Optional
-from pathlib import Path
 import json
+from operator import add
+from pathlib import Path
+from typing import Annotated, Any, TypedDict
+
+from langgraph.graph import END, START, StateGraph
 
 from agent_sandbox.parsing.llm_parser import parse_with_llm
 from agent_sandbox.repair.patch_generator import create_patch, run_git_apply
@@ -17,10 +18,10 @@ class RepairState(TypedDict):
     project_dir: Path
     pytest_errors: list[PytestError]
     parsed_errors: list[dict[str, Any]]
-    proposed_patch: Optional[str]
+    proposed_patch: str | None
     patch_valid: bool
     patch_applied: bool
-    patch_apply_output: Optional[str]
+    patch_apply_output: str | None
 
 
 def run_test_scripts(state: RepairState) -> dict:

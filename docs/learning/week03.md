@@ -167,6 +167,38 @@ container = client.containers.run(
 
 `PYTHONUNBUFFERED=1` 让 stdout 和 stderr 立即输出，便于在超时或异常终止时保留尽可能完整的日志。
 
+### Python 字节码与 `__pycache__`:
+“Python 逐行运行”是对程序执行效果的简化描述。CPython 实际会先解析源码并将其编译为 Python 字节码，再由 Python 虚拟机逐条执行字节码指令：
+```text
+.py 源代码
+    -> 词法与语法分析
+    -> Python 字节码
+    -> Python 虚拟机执行
+```
+
+这里的编译结果不是 CPU 直接执行的机器码。一行源码可能对应多条字节码指令，函数体也要等函数被调用时才执行。提前编译可以避免循环或函数每次执行时都重新解析源码，并能在程序真正运行前发现语法错误。
+
+导入模块时，Python 可能把字节码缓存到 `__pycache__` 目录中的 `.pyc` 文件：
+```text
+app/cart.py
+app/__pycache__/cart.cpython-312.pyc
+```
+
+`.pyc` 可以安全删除，Python 会在需要时重新编译。项目通常应忽略这些运行时缓存：
+```gitignore
+__pycache__/
+*.py[cod]
+```
+
+字节码的代码对象会保留编译时的源码路径。当前项目曾在宿主机生成 pytest 字节码，其中记录的路径为：
+```text
+/home/yinkai/agent-sandbox/fixtures/buggy_project/tests/test_cart.py
+```
+
+同一项目挂载到容器后位于 `/workspace`。容器读取宿主机生成的 `.pyc` 后，pytest 会按照字节码中的宿主路径查找源码；该路径在容器内不存在，因此 traceback 的对应源码行显示为 `???`，但测试执行和错误定位信息仍然有效。
+
+`PYTHONDONTWRITEBYTECODE=1` 只禁止 Python 写入新的 `.pyc`，不会禁止读取已经存在的缓存。因此，送入沙盒的项目不应包含 `__pycache__`，或者应为容器配置独立的字节码缓存目录。
+
 ### 容器生命周期管理:
 当前执行路径为：
 ```text

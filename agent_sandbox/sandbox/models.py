@@ -5,8 +5,12 @@ from pydantic import BaseModel, Field
 
 
 class ExecutionRequest(BaseModel):
+    # input related
     project_dir: Path = Field(description="project path")
     commands: list[str] = Field(description="commands list", min_length=1)
+
+    # output related
+    report_dir: Path | None = None
 
     # resource limitation
     timeout_seconds: float = Field(default=5, description="execution time limit", gt=0)

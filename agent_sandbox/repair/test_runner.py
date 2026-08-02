@@ -1,9 +1,12 @@
-from pathlib import Path
-from dataclasses import dataclass
 import json
-import subprocess
-import sys
+import os
 import tempfile
+from dataclasses import dataclass
+from pathlib import Path
+
+from agent_sandbox.sandbox.backend_protocol import ExecutionBackend
+from agent_sandbox.sandbox.docker_backend import DockerSandbox
+from agent_sandbox.sandbox.models import ExecutionRequest
 
 
 @dataclass(frozen=True)
@@ -54,33 +57,39 @@ def parse_pytest_errors(report: dict) -> list[PytestError]:
     return errors
 
 
-def run_pytest(project_dir: Path) -> tuple[bool, str, list[PytestError]]:
-    with tempfile.TemporaryDirectory() as tmpdir:
-        report_path = Path(tmpdir) / "pytest-report.json"
+def run_pytest(
+    project_dir: Path, backend: ExecutionBackend | None = None
+) -> tuple[bool, str, list[PytestError]]:
+    if backend is None:
+        backend = DockerSandbox()
+    with tempfile.TemporaryDirectory(prefix="agent-sandbox-reports-") as tmpdir:
+        report_dir = Path(tmpdir)
+        report_path = report_dir / "pytest-report.json"
+        os.chmod(report_dir, 0o777)
 
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "pytest",
-                "-q",
-                "--tb=short",
-                "--json-report",
-                f"--json-report-file={report_path}",
-            ],
-            cwd=project_dir,
-            capture_output=True,
-            text=True,
+        commands = [
+            "python",
+            "-m",
+            "pytest",
+            "-q",
+            "--tb=short",
+            "-p",
+            "no:cacheprovider",
+            "--json-report",
+            "--json-report-file=/reports/pytest-report.json",
+        ]
+        request = ExecutionRequest(
+            project_dir=project_dir, commands=commands, report_dir=report_dir
         )
+        execution = backend.execute(request=request)
 
-        output = "stdout:\n" + result.stdout + "\nstderr:\n" + result.stderr
-        passed = result.returncode == 0
+        passed = execution.exit_code == 0
+        output = f"stdout:\n{execution.stdout or ''}\nstderr:\n{execution.stderr or ''}"
+
         errors = []
-
         if report_path.exists():
             report = json.loads(report_path.read_text())
             errors = parse_pytest_errors(report)
-
         return passed, output, errors
 
 
