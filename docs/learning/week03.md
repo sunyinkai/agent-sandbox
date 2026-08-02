@@ -80,6 +80,8 @@ docker run --rm -it python:3.12-slim bash
 
 `--rm` 表示容器退出后自动删除。`docker exec` 会在运行中的容器内启动一个新进程；`docker attach` 连接的是容器主进程的输入输出，通常不用于进入容器调试。
 
+官方 Python 镜像的默认 `CMD` 是 Python，因此不指定命令时会进入 Python REPL。调试时可以用 `docker run --rm -it IMAGE sh` 覆盖默认命令；backend 传入的 `command` 同样会覆盖镜像默认 `CMD`。
+
 在 WSL 中，终端设置的代理环境变量只对当前 shell 及其子进程生效。拉取镜像由 Docker daemon 完成，因此 daemon 需要单独配置代理。
 
 ### Docker Python SDK:
@@ -250,9 +252,30 @@ commands = ["python", "-c", oom_code]
 
 项目使用 Ruff 进行代码格式化、import 排序和 lint。Python 3.10 以上使用 `X | None` 替代 `Optional[X]`，可以减少额外 import，并保持类型标注统一。
 
+文件路径描述磁盘上的位置，模块路径描述代码在 Python 包结构中的名称：
+```text
+文件路径：agent_sandbox/sandbox/docker_backend.py
+模块路径：agent_sandbox.sandbox.docker_backend
+```
+
+直接按文件路径运行时：
+```bash
+python agent_sandbox/sandbox/docker_backend.py
+```
+
+Python 会把它当作独立脚本，通常无法确定它所属的包，`__package__` 可能是 `None`。此时 `from .models import ...` 中的 `.` 没有明确的当前包，因此相对导入可能失败。
+
 包含相对导入的模块应从项目根目录使用 module 方式运行：
 ```bash
 python -m agent_sandbox.sandbox.docker_backend
 ```
 
-这种方式会保留包上下文，使 `from .models import ...` 能够正常解析。
+`-m` 会先通过 Python import 系统查找完整模块，再以 `__main__` 身份执行。查找过程中 Python 会建立包上下文：
+```python
+__name__ == "__main__"
+__package__ == "agent_sandbox.sandbox"
+```
+
+因此 `from .models import ...` 可以根据 `__package__` 解析为 `agent_sandbox.sandbox.models`。关键不是简单地把点号转换成斜杠，而是先确认模块的完整包身份，再执行模块。
+
+`python -m` 解决的是 Python import 上下文，不会改变 `Path("file.txt")` 等普通相对文件路径；这些路径仍然以当前工作目录为基准。

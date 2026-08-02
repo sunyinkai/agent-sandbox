@@ -16,7 +16,7 @@ class DockerSandbox:
         try:
             client = docker.from_env()
             container = client.containers.run(
-                "python:3.12-slim",
+                "agent-sandbox-python:3.12",
                 command=request.commands,
                 detach=True,
                 mem_limit=f"{request.memory_limit_mb}m",
@@ -24,7 +24,7 @@ class DockerSandbox:
                 pids_limit=request.pids_limit,
                 network_disabled=not request.network_enabled,
                 read_only=True,
-                user="65534:65534",
+                user="10001:10001",
                 cap_drop=["ALL"],
                 security_opt=["no-new-privileges"],
                 tmpfs={"/tmp": "rw,noexec,nosuid,size=64m"},
@@ -32,7 +32,11 @@ class DockerSandbox:
                     str(request.project_dir.resolve()): {
                         "bind": "/workspace",
                         "mode": "ro" if request.read_only_workspace else "rw",
-                    }
+                    },
+                    "/tmp/agent-sandbox-reports": {
+                        "bind": "/reports",
+                        "mode": "rw",
+                    },
                 },
                 working_dir="/workspace",
                 environment={
@@ -93,11 +97,19 @@ if __name__ == "__main__":
     """
     ).strip()
     req = ExecutionRequest(
-        project_dir=Path("."),
+        project_dir=(
+            Path(__file__).resolve().parents[2] / "fixtures" / "buggy_project"
+        ),
         commands=[
             "python",
-            "-c",
-            code_block,
+            "-m",
+            "pytest",
+            "-q",
+            "--tb=short",
+            "-p",
+            "no:cacheprovider",
+            "--json-report",
+            "--json-report-file=/reports/pytest-report.json",
         ],
     )
     result = DockerSandbox().execute(req)
