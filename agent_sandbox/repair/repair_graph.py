@@ -1,4 +1,3 @@
-import json
 from operator import add
 from pathlib import Path
 from typing import Annotated, Any, TypedDict
@@ -146,4 +145,26 @@ if __name__ == "__main__":
             "patch_apply_output": None,
         }
     )
-    print(json.dumps(result, default=str))
+
+    def print_result(result: dict) -> None:
+        print("\n=== Repair Result ===")
+        print(f"Passed:        {result['passed']}")
+        print(f"Attempts:      {result['attempts']}/{result['max_attempts']}")
+        print(f"Patch valid:   {result['patch_valid']}")
+        print(f"Patch applied: {result['patch_applied']}")
+        print(f"Final errors:  {len(result['pytest_errors'])}")
+
+        print("\n=== Execution History ===")
+        for index, entry in enumerate(result["history"], start=1):
+            print(f"\n--- Step {index} ---")
+            print(entry.rstrip())
+
+        if result["proposed_patch"]:
+            print("\n=== Applied Patch ===")
+            print(result["proposed_patch"].rstrip())
+
+        success, diff = LocalWorkspace(result["project_dir"]).git_diff()
+        print("\n=== Final Diff ===")
+        print(diff.rstrip() if success and diff else "(no diff)")
+
+    print_result(result)
