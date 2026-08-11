@@ -6,8 +6,9 @@ from typing import Annotated, Any, TypedDict
 from langgraph.graph import END, START, StateGraph
 
 from agent_sandbox.parsing.llm_parser import parse_with_llm
-from agent_sandbox.repair.patch_generator import create_patch, run_git_apply
+from agent_sandbox.repair.patch_generator import create_patch
 from agent_sandbox.repair.test_runner import PytestError, run_pytest
+from agent_sandbox.tools.local_workspace import LocalWorkspace
 
 
 class RepairState(TypedDict):
@@ -73,7 +74,7 @@ def apply_patch(state: RepairState) -> dict:
             "history": ["apply_patch: skipped invalid patch\n"],
         }
 
-    result = run_git_apply(patch, state["project_dir"])
+    result = LocalWorkspace(root=state["project_dir"]).run_git_apply(patch, False)
 
     output = result.stdout + "\n" + result.stderr
     applied = result.returncode == 0

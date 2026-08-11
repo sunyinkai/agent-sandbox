@@ -1,12 +1,12 @@
 import json
 import os
-import subprocess
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 from openai.types.responses import ResponseInputParam
 
 from agent_sandbox.integrations.openai_client import get_client
+from agent_sandbox.tools.local_workspace import LocalWorkspace
 
 
 def resolve_project_file(file_path: str, project_dir: Path) -> Path:
@@ -51,41 +51,8 @@ def normalize_patch_text(patch_text: str) -> str:
     return patch_text
 
 
-def run_git_apply(
-    patch_text: str, project_dir: Path, check_only: bool = False
-) -> subprocess.CompletedProcess[str]:
-    project_dir = project_dir.resolve()
-    args = ["git", "apply", "--recount"]
-    if check_only:
-        args.append("--check")
-
-    # Find the Git worktree root so patch paths can be prefixed correctly.
-    repo_result = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        text=True,
-        capture_output=True,
-        cwd=project_dir,
-    )
-    apply_cwd = project_dir
-
-    if repo_result.returncode == 0:
-        repo_root = Path(repo_result.stdout.strip()).resolve()
-        relative_project_dir = project_dir.relative_to(repo_root)
-        apply_cwd = repo_root
-        if relative_project_dir != Path("."):
-            args.append(f"--directory={relative_project_dir.as_posix()}")
-
-    return subprocess.run(
-        args,
-        input=patch_text,
-        text=True,
-        capture_output=True,
-        cwd=apply_cwd,
-    )
-
-
 def check_patch(patch_text: str, project_dir: Path) -> tuple[bool, str]:
-    result = run_git_apply(patch_text, project_dir, check_only=True)
+    result = LocalWorkspace(root=project_dir).run_git_apply(patch_text, check_only=True)
     return result.returncode == 0, result.stderr
 
 
