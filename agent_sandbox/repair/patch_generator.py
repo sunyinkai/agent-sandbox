@@ -52,7 +52,7 @@ def normalize_patch_text(patch_text: str) -> str:
 
 
 def check_patch(patch_text: str, project_dir: Path) -> tuple[bool, str]:
-    result = LocalWorkspace(root=project_dir).run_git_apply(patch_text, check_only=True)
+    result = LocalWorkspace(root=project_dir).git_apply(patch_text, check_only=True)
     return result.returncode == 0, result.stderr
 
 

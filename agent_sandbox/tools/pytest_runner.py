@@ -91,15 +91,3 @@ def run_pytest(
             report = json.loads(report_path.read_text())
             errors = parse_pytest_errors(report)
         return passed, output, errors
-
-
-if __name__ == "__main__":
-    project_dir = Path(__file__).resolve().parents[2] / "fixtures" / "buggy_project"
-
-    passed, output, errors = run_pytest(project_dir)
-
-    print(f"passed={passed}")
-    print("output:")
-    print(output)
-    print("errors:")
-    print(errors)

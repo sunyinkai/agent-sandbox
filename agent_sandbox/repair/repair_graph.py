@@ -7,8 +7,8 @@ from langgraph.graph import END, START, StateGraph
 
 from agent_sandbox.parsing.llm_parser import parse_with_llm
 from agent_sandbox.repair.patch_generator import create_patch
-from agent_sandbox.repair.test_runner import PytestError, run_pytest
 from agent_sandbox.tools.local_workspace import LocalWorkspace
+from agent_sandbox.tools.pytest_runner import PytestError
 
 
 class RepairState(TypedDict):
@@ -26,7 +26,7 @@ class RepairState(TypedDict):
 
 
 def run_test_scripts(state: RepairState) -> dict:
-    passed, output, errors = run_pytest(state["project_dir"])
+    passed, output, errors = LocalWorkspace(root=state["project_dir"]).run_tests()
     return {
         "passed": passed,
         "pytest_errors": errors,
@@ -74,7 +74,7 @@ def apply_patch(state: RepairState) -> dict:
             "history": ["apply_patch: skipped invalid patch\n"],
         }
 
-    result = LocalWorkspace(root=state["project_dir"]).run_git_apply(patch, False)
+    result = LocalWorkspace(root=state["project_dir"]).git_apply(patch, False)
 
     output = result.stdout + "\n" + result.stderr
     applied = result.returncode == 0

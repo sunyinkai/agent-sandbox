@@ -1,6 +1,10 @@
 import subprocess
 from pathlib import Path
 
+from agent_sandbox.sandbox.backend_protocol import ExecutionBackend
+
+from .pytest_runner import PytestError, run_pytest
+
 
 class LocalWorkspace:
     def __init__(self, root: Path):
@@ -40,7 +44,7 @@ class LocalWorkspace:
             raise FileNotFoundError(f"Parent directory doesn't exist: {target.parent}")
         return target.write_text(content, encoding="utf-8")
 
-    def get_current_branch(self) -> str:
+    def git_get_current_branch(self) -> str:
         result = subprocess.run(
             ["git", "branch", "--show-current"],
             text=True,
@@ -50,7 +54,7 @@ class LocalWorkspace:
         )
         return result.stdout.strip() if result.returncode == 0 else result.stderr
 
-    def run_git_apply(
+    def git_apply(
         self, patch_text: str, check_only: bool = False
     ) -> subprocess.CompletedProcess[str]:
         project_dir = self.root
@@ -88,9 +92,28 @@ class LocalWorkspace:
             check=False,
         )
 
+    def git_diff(self) -> tuple[bool, str]:
+        result = subprocess.run(
+            ["git", "diff", "--relative", "--", "."],
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        return (
+            result.returncode == 0,
+            result.stdout if result.returncode == 0 else result.stderr,
+        )
+
+    def run_tests(
+        self, backend: ExecutionBackend | None = None
+    ) -> tuple[bool, str, list[PytestError]]:
+        return run_pytest(self.root, backend)
+
 
 if __name__ == "__main__":
     workspace = LocalWorkspace(Path("./fixtures/buggy_project"))
     print(workspace.list_files(Path("app")))
     print(workspace.read_file(Path("app/cart.py")))
-    print(workspace.get_current_branch())
+    print(workspace.git_get_current_branch())
+    print(workspace.git_diff())

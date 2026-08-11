@@ -1,4 +1,4 @@
-from agent_sandbox.repair.test_runner import parse_pytest_errors
+from agent_sandbox.tools.pytest_runner import parse_pytest_errors
 
 
 def test_parse_pytest_errors_returns_failure_details():
