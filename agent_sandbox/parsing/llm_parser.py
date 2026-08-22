@@ -1,5 +1,4 @@
 import os
-from typing import Optional
 
 from agent_sandbox.integrations.openai_client import get_client
 from agent_sandbox.parsing.schemas import ParsedError
@@ -21,7 +20,7 @@ Rules:
 """
 
 
-def parse_with_llm(log: str) -> Optional[ParsedError]:
+def parse_with_llm(log: str) -> ParsedError | None:
     client = get_client()
     if client is None:
         print("[-] Error: Failed to create client")

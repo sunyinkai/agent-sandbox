@@ -1,11 +1,9 @@
-from typing import Optional
-
 from .llm_parser import parse_with_llm
 from .regex_parser import parse_with_regex
 from .schemas import ParsedError
 
 
-def parsed_error_log(log: str) -> Optional[ParsedError]:
+def parsed_error_log(log: str) -> ParsedError | None:
     parsed = parse_with_regex(log)
     if (
         parsed is None

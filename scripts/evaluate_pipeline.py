@@ -2,7 +2,7 @@ import argparse
 import json
 from pathlib import Path
 
-from agent_sandbox.parsing.pipeline import parsed_error_log
+from agent_sandbox.parsing.parse_pipeline import parsed_error_log
 
 
 def load_jsonl(path: Path):

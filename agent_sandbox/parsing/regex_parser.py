@@ -1,10 +1,9 @@
 import re
-from typing import Optional
 
 from .schemas import ParsedError
 
 
-def parse_with_regex(log: str) -> Optional[ParsedError]:
+def parse_with_regex(log: str) -> ParsedError | None:
     # Match exception line, for example:
     # TypeError: unsupported operand type(s) for +: 'int' and 'str'
     error_matches = re.findall(
