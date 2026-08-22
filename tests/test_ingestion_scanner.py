@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_sandbox.ingestion.scanner import Scanner
+from agent_sandbox.ingestion.source_loader import SourceLoader
 
 
 def create_file(root: Path, relative_path: str) -> None:
@@ -20,7 +20,7 @@ def test_scan_repository_returns_sorted_relative_python_paths(tmp_path):
     create_file(tmp_path, "src/config.json")
     create_file(tmp_path, "src/module.pyc")
 
-    paths = Scanner(tmp_path).scan_repository()
+    paths = SourceLoader(tmp_path).scan_repository()
 
     assert paths == [
         Path("main.py"),
@@ -48,16 +48,16 @@ def test_scan_repository_excludes_ignored_directories(tmp_path, excluded_directo
     create_file(tmp_path, f"{excluded_directory}/ignored.py")
     create_file(tmp_path, "src/included.py")
 
-    paths = Scanner(tmp_path).scan_repository()
+    paths = SourceLoader(tmp_path).scan_repository()
 
     assert paths == [Path("src/included.py")]
 
 
 def test_scan_repository_returns_empty_list_for_empty_directory(tmp_path):
-    assert Scanner(tmp_path).scan_repository() == []
+    assert SourceLoader(tmp_path).scan_repository() == []
 
 
 def test_scan_repository_returns_empty_list_for_missing_root(tmp_path):
     missing_root = tmp_path / "missing"
 
-    assert Scanner(missing_root).scan_repository() == []
+    assert SourceLoader(missing_root).scan_repository() == []

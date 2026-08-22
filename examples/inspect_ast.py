@@ -18,6 +18,7 @@ def get_symbol_type(node: ast.AST) -> str:
 def inspect_file(path: Path, show_dump: bool = False) -> None:
     source = path.read_text(encoding="utf-8")
     tree = ast.parse(source, filename=str(path))
+    print(type(tree))
 
     if show_dump:
         print("=======dump tree========")
