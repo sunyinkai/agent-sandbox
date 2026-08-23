@@ -31,7 +31,9 @@ class SourceLoader:
             ]
         )
 
-    def parse_python_file(self, file: Path) -> ParsedFile | IngestionError:
+    def parse_python_file(
+        self, repo_id: str, file: Path
+    ) -> ParsedFile | IngestionError:
         root_resolved = self.root.resolve()
         path_resolved = (self.root / file).resolve()
         if not path_resolved.is_relative_to(root_resolved):
@@ -40,7 +42,9 @@ class SourceLoader:
             with tokenize.open(path_resolved) as source_file:
                 source = source_file.read()
                 tree = ast.parse(source=source, filename=file)
-                return ParsedFile(file_path=file, source=source, tree=tree)
+                return ParsedFile(
+                    repo_id=repo_id, file_path=file, source=source, tree=tree
+                )
         except (SyntaxError, UnicodeDecodeError, OSError) as error:
             error_type = type(error).__name__
             message = error.msg if isinstance(error, SyntaxError) else str(error)
@@ -52,6 +56,7 @@ class SourceLoader:
                 error_type=error_type,
                 raw_messages=str(error),
             )
+
 
 if __name__ == "__main__":
     print(*SourceLoader(Path("./")).scan_repository(), sep="\n")

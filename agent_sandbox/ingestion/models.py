@@ -5,6 +5,7 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class ParsedFile:
+    repo_id: str
     file_path: Path
     source: str
     tree: Module
@@ -21,11 +22,15 @@ class IngestionError:
 
 @dataclass(frozen=True)
 class CodeChunk:
+    chunk_id: str
+    content_hash: str
+    module_name: str
     file_path: Path
     start_line: int
     end_line: int
-    content: str
+    line_count: int
     symbol_type: str  # eg. function
     symbol_name: str  # eg. c
     parent_symbol: str | None  # b
     qualified_name: str  # eg. a.b.c
+    content: str

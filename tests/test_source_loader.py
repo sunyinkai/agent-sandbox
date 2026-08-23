@@ -17,9 +17,10 @@ def test_parse_python_file_returns_parsed_file(tmp_path):
     source = "def greet():\n    return 'hello'\n"
     write_source(tmp_path, "src/greet.py", source)
 
-    result = SourceLoader(tmp_path).parse_python_file(Path("src/greet.py"))
+    result = SourceLoader(tmp_path).parse_python_file("test-repo", Path("src/greet.py"))
 
     assert isinstance(result, ParsedFile)
+    assert result.repo_id == "test-repo"
     assert result.file_path == Path("src/greet.py")
     assert result.source == source
     assert isinstance(result.tree, ast.Module)
@@ -29,7 +30,7 @@ def test_parse_python_file_returns_parsed_file(tmp_path):
 def test_parse_python_file_accepts_empty_file(tmp_path):
     write_source(tmp_path, "empty.py", "")
 
-    result = SourceLoader(tmp_path).parse_python_file(Path("empty.py"))
+    result = SourceLoader(tmp_path).parse_python_file("test-repo", Path("empty.py"))
 
     assert isinstance(result, ParsedFile)
     assert result.source == ""
@@ -40,7 +41,7 @@ def test_parse_python_file_preserves_utf8_source(tmp_path):
     source = '# 中文注释\nmessage = "你好"\n'
     write_source(tmp_path, "chinese.py", source)
 
-    result = SourceLoader(tmp_path).parse_python_file(Path("chinese.py"))
+    result = SourceLoader(tmp_path).parse_python_file("test-repo", Path("chinese.py"))
 
     assert isinstance(result, ParsedFile)
     assert result.source == source
@@ -51,7 +52,7 @@ def test_parse_python_file_honors_encoding_declaration(tmp_path):
     path = tmp_path / "latin1.py"
     path.write_bytes(source.encode("latin-1"))
 
-    result = SourceLoader(tmp_path).parse_python_file(Path("latin1.py"))
+    result = SourceLoader(tmp_path).parse_python_file("test-repo", Path("latin1.py"))
 
     assert isinstance(result, ParsedFile)
     assert result.source == source
@@ -61,7 +62,7 @@ def test_parse_python_file_honors_encoding_declaration(tmp_path):
 def test_parse_python_file_returns_syntax_error(tmp_path):
     write_source(tmp_path, "broken.py", "async def broken:\n    pass\n")
 
-    result = SourceLoader(tmp_path).parse_python_file(Path("broken.py"))
+    result = SourceLoader(tmp_path).parse_python_file("test-repo", Path("broken.py"))
 
     assert isinstance(result, IngestionError)
     assert result.file_path == Path("broken.py")
@@ -75,7 +76,9 @@ def test_parse_python_file_returns_decode_error(tmp_path):
     path = tmp_path / "invalid_encoding.py"
     path.write_bytes(b'# coding: ascii\nname = "\xff"\n')
 
-    result = SourceLoader(tmp_path).parse_python_file(Path("invalid_encoding.py"))
+    result = SourceLoader(tmp_path).parse_python_file(
+        "test-repo", Path("invalid_encoding.py")
+    )
 
     assert isinstance(result, IngestionError)
     assert result.error_type == "UnicodeDecodeError"
@@ -84,7 +87,7 @@ def test_parse_python_file_returns_decode_error(tmp_path):
 
 
 def test_parse_python_file_returns_error_for_missing_file(tmp_path):
-    result = SourceLoader(tmp_path).parse_python_file(Path("missing.py"))
+    result = SourceLoader(tmp_path).parse_python_file("test-repo", Path("missing.py"))
 
     assert isinstance(result, IngestionError)
     assert result.file_path == Path("missing.py")
@@ -95,7 +98,7 @@ def test_parse_python_file_returns_error_for_missing_file(tmp_path):
 
 def test_parse_python_file_rejects_path_outside_repository(tmp_path):
     with pytest.raises(ValueError, match="Invalid path"):
-        SourceLoader(tmp_path).parse_python_file(Path("../outside.py"))
+        SourceLoader(tmp_path).parse_python_file("test-repo", Path("../outside.py"))
 
 
 def test_parse_python_file_failure_does_not_stop_other_files(tmp_path):
@@ -105,7 +108,7 @@ def test_parse_python_file_failure_does_not_stop_other_files(tmp_path):
     loader = SourceLoader(tmp_path)
 
     results = [
-        loader.parse_python_file(file_path)
+        loader.parse_python_file("test-repo", file_path)
         for file_path in (Path("first.py"), Path("broken.py"), Path("second.py"))
     ]
 
