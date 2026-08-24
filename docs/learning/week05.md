@@ -3,6 +3,140 @@
 > 本周为 Agent Sandbox 增加 Python 源码 ingestion 层，使用 AST 按符号切分源码，
 > 并保留文件路径、符号名称和源码行号等 metadata。
 
+## 为什么需要 Code Chunk
+
+Code Chunk 是从源码中切出的一个可独立处理的语义单元。在当前项目中，一个 Chunk 通常
+对应类、函数、异步函数或嵌套函数，而不是任意固定长度的文本片段：
+
+```text
+UserService
+UserService.get_user
+UserService.get_user.inner
+create_service
+```
+
+源码文件可能很大，并且同时包含多个不相关的符号。直接把整个文件交给检索系统或 LLM，
+会增加 token 消耗和无关上下文；只按固定字符数切分，又可能把函数签名和函数体拆开。
+AST Chunking 使用 Python 语法边界切分，可以保留更完整的代码语义。
+
+因此，Chunk 可以理解为：
+
+> 代码处理系统中的最小语义工作单元；embedding 只是消费 Chunk 的一种方式。
+
+### Embedding 与语义检索
+
+每个 Chunk 的 `content` 可以转换为 embedding，并保存到向量数据库：
+
+```text
+CodeChunk.content
+		↓
+Embedding Model
+		↓
+向量
+		↓
+Vector Database
+```
+
+自然语言问题也转换为向量，再查找语义相近的代码。例如“用户注销功能在哪里”可能检索到
+`UserService.deactivate_user`。相比对整个文件生成 embedding，函数或类级 Chunk 能减少
+无关代码干扰，使结果更精确，也能直接返回符号名称、文件路径和源码行号。
+
+### 给 LLM 提供有限且相关的上下文
+
+Chunk 可以作为修复 Agent 的上下文：
+
+```text
+pytest 错误
+	↓ 提取文件路径、行号和函数名
+查找相关 CodeChunk
+	↓
+把错误信息和相关源码交给 LLM
+	↓
+生成修复补丁
+```
+
+这样不需要把整个仓库放进 prompt，可以降低 token 数量和上下文噪声，并让模型集中处理
+真正相关的函数或类。
+
+### 不使用 embedding 的精确检索
+
+如果错误已经包含路径和行号，可以直接利用 metadata 定位 Chunk，不必进行向量搜索：
+
+```python
+chunk.file_path == error_file
+chunk.start_line <= error_line <= chunk.end_line
+```
+
+也可以按照符号名称精确查找：
+
+```python
+chunk.qualified_name == "UserService.get_user"
+```
+
+路径和行号定位通常比语义检索更确定。embedding 更适合只有错误描述或自然语言问题、没有
+明确源码位置的情况。实际系统可以先尝试精确定位，再用语义检索补充相关上下文。
+
+### 增量索引与缓存
+
+`chunk_id` 表示稳定身份，`content_hash` 表示当前内容。再次扫描仓库时，可以比较新旧结果：
+
+```text
+chunk_id 相同，content_hash 相同
+→ 同一个符号且内容未变化，复用 embedding 或缓存
+
+chunk_id 相同，content_hash 不同
+→ 同一个符号的内容发生变化，更新索引
+
+旧 chunk_id 消失
+→ 符号被删除，从索引移除
+
+新 chunk_id 出现
+→ 新增符号，创建索引
+```
+
+这能避免每次运行都为整个仓库重新生成 embedding，减少模型调用、运行时间和存储更新。
+
+### 代码导航、变更分析与评估
+
+Chunk 的 `symbol_name`、`qualified_name`、`parent_symbol` 和 `symbol_type` 可以表达文件内的
+代码结构，支持符号搜索和父子关系展示。把 Git diff 的修改行映射到 Chunk 后，还可以判断
+本次修改影响了哪些函数或类、哪些 embedding 需要更新，以及哪些符号应重点 review。
+
+写入 JSONL 的 Chunk 也可以作为评估数据，用于：
+
+- 随机抽查路径、行号和源码是否准确。
+- 统计过大或过小的 Chunk。
+- 检查重复 Chunk。
+- 构造“问题到相关代码”的检索测试集。
+- 比较不同 Chunking 策略的检索和修复效果。
+
+### metadata 各自解决的问题
+
+当前主要字段可以这样理解：
+
+| 字段 | 作用 |
+|---|---|
+| `content` | embedding、LLM 上下文和源码展示 |
+| `file_path` | 定位原始文件 |
+| `start_line` / `end_line` | 根据报错或 diff 精确定位源码 |
+| `symbol_name` | 简单符号搜索 |
+| `qualified_name` | 区分不同作用域中的同名符号 |
+| `parent_symbol` | 表达类、方法和嵌套函数的归属关系 |
+| `symbol_type` | 按类、函数或异步函数过滤和统计 |
+| `chunk_id` | 向量数据库或索引中的稳定记录身份 |
+| `content_hash` | 判断内容是否变化，支持增量更新 |
+| `module_name` | 按 Python 模块组织和检索 |
+| `line_count` | 统计 Chunk 大小和发现异常大块 |
+
+### 当前策略的限制
+
+类 Chunk 会包含整个类源码，同时类中的方法也会生成独立 Chunk，因此两者存在内容重叠。
+这种重叠可以为类级问题提供完整上下文，但会增加 embedding 和存储成本。后续可以根据检索
+效果决定是否保留完整类 Chunk，或者只保存类头、docstring 和方法列表。
+
+Chunk 中保存的是原始源码，可能包含硬编码凭据或其他敏感内容。生成的 JSONL、embedding
+和向量数据库记录不应默认公开；写出或上传前仍需遵循仓库访问权限并进行敏感信息检查。
+
 ## AST 定义
 
 AST（Abstract Syntax Tree，抽象语法树）是 Python 源码的结构化表示。源码中的模块、
@@ -1141,3 +1275,162 @@ paths = sorted(paths)
 ```python
 print(*paths, sep="\n")
 ```
+
+## Git Commit 约定
+
+`feat`、`fix` 等名称通常来自 Conventional Commits（约定式提交）。它们不是 Git 强制
+要求的语法，也不是 Git tag，而是团队用于统一 commit message 的规范。
+
+基本格式是：
+
+```text
+<type>(<scope>): <description>
+```
+
+例如：
+
+```text
+feat(ingestion): add repository ingestion service
+```
+
+- `type`：本次提交的主要性质，例如新功能或 Bug 修复。
+- `scope`：可选，表示影响的模块或范围。
+- `description`：简短说明本次提交做了什么。
+
+### 常用 commit type
+
+| Type | 含义 | 使用场景 | 示例 |
+|---|---|---|---|
+| `feat` | 新功能 | 增加新的系统能力 | `feat(ingestion): add ingestion service` |
+| `fix` | Bug 修复 | 修复错误行为 | `fix(chunker): include decorators in chunk range` |
+| `test` | 测试 | 只增加或修改测试 | `test(ingestion): cover service output` |
+| `docs` | 文档 | 修改 README、学习笔记或 API 文档 | `docs(learning): explain pathlib APIs` |
+| `refactor` | 重构 | 行为不变，只调整代码结构 | `refactor(chunker): rename chunk generator` |
+| `perf` | 性能优化 | 提高速度或降低资源消耗 | `perf(scanner): avoid repeated path conversion` |
+| `style` | 格式调整 | 空格、换行、格式化，不改变逻辑 | `style(writer): format method signature` |
+| `build` | 构建和依赖 | 依赖、打包或构建配置 | `build: add pydantic dependency` |
+| `ci` | 持续集成 | GitHub Actions 等 CI 配置 | `ci: run pytest on pull requests` |
+| `chore` | 日常维护 | 不属于功能、修复、测试或文档的维护 | `chore: update gitignore` |
+| `revert` | 撤销提交 | 撤销之前的 commit | `revert: remove ingestion report` |
+
+### scope 的选择
+
+`scope` 不是必需的，但可以帮助快速识别改动范围。本项目可以使用：
+
+```text
+ingestion
+chunker
+writer
+parsing
+repair
+sandbox
+tools
+learning
+```
+
+示例：
+
+```text
+feat(ingestion): add repository ingestion service
+fix(writer): serialize paths as strings
+refactor(chunker): expose generate entry point
+test(ingestion): cover service JSONL output
+docs(learning): document chunk use cases
+```
+
+scope 应描述模块或领域，不必精确到文件名。一次提交影响多个紧密相关文件时，仍可以使用
+一个共同的 scope，例如生产代码和对应测试可以统一使用 `ingestion`。
+
+### description 的写法
+
+description 建议：
+
+- 使用简短、明确的英文描述。
+- 使用祈使语气或简单现在时，例如 `add`、`fix`、`rename`。
+- 首字母通常小写。
+- 末尾通常不加句号。
+- 描述“做了什么”，详细原因放在 commit body 中。
+
+推荐：
+
+```text
+feat(ingestion): add repository ingestion service
+```
+
+不推荐：
+
+```text
+feat(ingestion): Added a new repository ingestion service.
+```
+
+### Breaking Change
+
+如果提交包含不兼容的公开接口变更，可以在 type 或 scope 后加 `!`：
+
+```text
+refactor(ingestion)!: require repo_id when parsing files
+```
+
+也可以在 commit body 中说明：
+
+```text
+BREAKING CHANGE: parse_python_file now requires repo_id
+```
+
+这表示调用方必须修改代码才能继续使用新版本。普通内部重命名如果没有外部调用者，不一定
+需要标记为 breaking change。
+
+### 如何选择 type
+
+可以按照下面的顺序判断：
+
+```text
+增加新的能力？
+→ feat
+
+修复错误行为？
+→ fix
+
+只修改测试？
+→ test
+
+只修改文档？
+→ docs
+
+行为不变，只调整代码结构？
+→ refactor
+
+只调整格式？
+→ style
+
+修改依赖或构建配置？
+→ build
+
+修改 CI？
+→ ci
+
+其他维护工作？
+→ chore
+```
+
+type 应根据提交的主要目的选择，而不是根据修改了哪种文件。例如修复生产 Bug 并同步补充
+回归测试时，主要目的仍是修复，所以使用 `fix`，而不是 `test`。
+
+### 提交拆分原则
+
+一个 commit 最好只表达一个完整目的，方便 review、回滚和定位历史。例如可以拆成：
+
+```text
+refactor(chunker): rename chunk generator
+feat(ingestion): add repository ingestion service
+test(ingestion): cover service and JSONL output
+docs(learning): document commit conventions
+```
+
+但测试如果是新功能不可分割的一部分，也可以与生产实现放进同一个提交：
+
+```text
+feat(ingestion): add service with end-to-end tests
+```
+
+是否拆分取决于改动是否能独立理解和独立回滚，不需要机械地让每种文件都单独提交。

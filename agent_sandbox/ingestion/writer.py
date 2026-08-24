@@ -21,21 +21,31 @@ class Writer:
 
 
 if __name__ == "__main__":
-    from .chunk_generator import ChunkGenerator
-    from .source_loader import SourceLoader
-
-    root = Path(__file__).parent.parent
-    loader = SourceLoader(root=root)
-    files = loader.scan_repository()
-    parsed_files = [loader.parse_python_file("agent_sandbox", file) for file in files]
-
-    chunks: list[CodeChunk] = []
-    errors: list[IngestionError] = []
-    for result in parsed_files:
-        if isinstance(result, IngestionError):
-            errors.append(result)
-        else:
-            chunks.extend(ChunkGenerator(result).generate())
+    chunks = [
+        CodeChunk(
+            chunk_id="1",
+            content_hash="2",
+            module_name="3",
+            file_path=Path(__file__),
+            start_line=1,
+            end_line=1,
+            line_count=1,
+            symbol_type="function",
+            symbol_name="hello",
+            parent_symbol=None,
+            qualified_name="a.b.c",
+            content="hello world",
+        )
+    ]
+    errors = [
+        IngestionError(
+            file_path=Path(__file__),
+            msg="test error",
+            line_number=12,
+            error_type="unkown",
+            raw_messages="errors for test",
+        )
+    ]
     writer = Writer(Path(__file__).with_name("code_chunks.jsonl"), "w")
     writer.write(chunks)
     writer = Writer(Path(__file__).with_name("ingestion_error.jsonl"), "w")

@@ -5,7 +5,7 @@ from pathlib import Path
 from .models import CodeChunk, ParsedFile
 
 
-class ChunkGenerator(ast.NodeVisitor):
+class Chunker(ast.NodeVisitor):
     def __init__(self, parsed_file: ParsedFile) -> None:
         self.repo_id = parsed_file.repo_id
         self.qualified_symbol = list[str]()
@@ -104,7 +104,7 @@ if __name__ == "__main__":
         file_path=Path("unkown"), source=source, tree=tree, repo_id="test"
     )
     if type(parsed_file) is ParsedFile:
-        chunk_generator = ChunkGenerator(parsed_file=parsed_file)
+        chunk_generator = Chunker(parsed_file=parsed_file)
         chunks = chunk_generator.generate()
         for chunk in chunks:
             print(repr(chunk))

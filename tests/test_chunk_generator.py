@@ -1,7 +1,7 @@
 import ast
 from pathlib import Path
 
-from agent_sandbox.ingestion.chunk_generator import ChunkGenerator
+from agent_sandbox.ingestion.chunker import Chunker
 from agent_sandbox.ingestion.models import CodeChunk, ParsedFile
 
 
@@ -17,7 +17,7 @@ def generate_chunks(
         source=source,
         tree=ast.parse(source, filename=file_path.as_posix()),
     )
-    generator = ChunkGenerator(parsed_file)
+    generator = Chunker(parsed_file)
     return generator.generate()
 
 
@@ -98,7 +98,7 @@ def test_generate_sorts_chunks_and_does_not_accumulate_results():
         source=source,
         tree=ast.parse(source, filename=file_path.as_posix()),
     )
-    generator = ChunkGenerator(parsed_file)
+    generator = Chunker(parsed_file)
     first_result = generator.generate()
     second_result = generator.generate()
 
